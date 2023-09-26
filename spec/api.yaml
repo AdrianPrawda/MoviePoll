@@ -1,0 +1,298 @@
+openapi: 3.0.0
+info:
+  title: Movie Poll API
+  description: Movie Poll API Service
+  version: 0.0.1
+  contact:
+    name: API Support
+    url: https://www.github.com/AdrianPrawda/MoviePoll
+
+servers:
+  - url: http://localhost:35555
+    description: Local development server
+
+tags:
+  - name: poll
+    description: /api/v1/poll
+  - name: heartbeat
+    description: /api/heartbeat
+    
+
+components:
+  schemas:
+    CreatePollReq:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Quentin Tarrantino Movies
+        votes:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 4
+        choices:
+          type: array
+          minItems: 2
+          items:
+            type: string
+            example: Pulp Fiction
+        type:
+          type: string
+          enum: [single, multiple]
+          example: multiple
+        previous_poll_id:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+        auto_create:
+          type: boolean
+          example: true
+      required:
+        - title
+        - votes
+        - choices
+        - type
+        - previous_poll_id
+        - auto_create
+
+    CreatePollResp:
+      type: object
+      properties:
+        poll_id:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+    
+    VotePollReq:
+      type: object
+      properties:
+        poll_id:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+        user_id:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+        votes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: integer
+            format: int32
+            example: 636
+      required:
+        - poll_id
+        - user_id
+        - votes
+    
+    DeletePollReq:
+      type: object
+      properties:
+        poll_id:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+      required: [poll_id]
+    
+    GetPollDataReq:
+      type: object
+      properties:
+        poll_id:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+      required: [poll_id]
+    
+    GetPollDataResp:
+      type: object
+      properties:
+        votes_required:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 5
+        votes_cast:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 2
+        type:
+          type: string
+          enum: [single, multiple]
+          example: single
+        choices:
+          type: object
+          additionalProperties:
+            type: string
+        votes:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int32
+        next_poll:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+        latest_poll:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+    
+    GetPollStatusReq:
+      type: object
+      properties:
+        poll_id:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+      required: [poll_id]
+    
+    GetPollStatusResp:
+      type: object
+      properties:
+        votes_required:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 5
+        votes_cast:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 3
+        next_poll:
+          type: string
+          example: 3073ea0e-ed67-48ae-bbfa-3b0e4786da38
+
+paths:
+  /api/poll/v1/create:
+    post:
+      operationId: create_poll
+      tags: [poll]
+      summary: Creates a new poll
+      description: TODO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePollReq'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePollResp'
+        '400':
+          description: Malformed request or invalid previous poll id
+        '408':
+          description: Request processing exeeced timeout. Try again later
+        default:
+          description: Unexpected error
+  
+  /api/poll/v1/data:
+    get:
+      operationId: get_poll_data
+      tags: [poll]
+      summary: TODO
+      description: TODO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetPollDataReq'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPollDataResp'
+        '404':
+          description: Poll not found
+        '408':
+          description: Request processing exeeced timeout. Try again later
+        default:
+          description: Unexpected error
+  
+  /api/poll/v1/delete:
+    delete:
+      operationId: delete_poll
+      tags: [poll]
+      summary: TODO
+      description: TODO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeletePollReq'
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Poll not found
+        '408':
+          description: Request processing exeeced timeout. Try again later
+        default:
+          description: Unexpected error
+  
+  /api/poll/v1/vote:
+    post:
+      operationId: vote_poll
+      tags: [poll]
+      summary: TODO
+      description: TODO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VotePollReq'
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: User already voted, poll already ended or vote ids invalid
+        '404':
+          description: User or poll not found
+        '408':
+          description: Request processing exeeced timeout. Try again later
+        default:
+          description: Unexpected error
+  
+  /api/poll/v1/status:
+    get:
+      operationId: get_status
+      tags: [poll]
+      summary: TODO
+      description: TODO
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetPollStatusReq'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPollStatusResp'
+        '404':
+          description: Poll not found
+        '408':
+          description: Request processing exeeced timeout. Try again later
+        default:
+          description: Unexpected error
+  
+  /api/heartbeat:
+    post:
+      operationId: heartbeat
+      tags: [heartbeat]
+      summary: TODO
+      description: TODO
+      responses:
+        '200':
+          description: Heartbeat succeeded
+        '408':
+          description: Heartbeat failed
+        default:
+          description: Unexpected error
