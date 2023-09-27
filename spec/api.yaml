@@ -164,7 +164,7 @@ paths:
       operationId: create_poll
       tags: [poll]
       summary: Creates a new poll
-      description: TODO
+      description: Creates a new poll and (optionally) links it with an existing one
       requestBody:
         required: true
         content:
@@ -189,8 +189,8 @@ paths:
     get:
       operationId: get_poll_data
       tags: [poll]
-      summary: TODO
-      description: TODO
+      summary: Returns poll state and data
+      description: Returns poll state and data
       requestBody:
         required: true
         content:
@@ -215,8 +215,8 @@ paths:
     delete:
       operationId: delete_poll
       tags: [poll]
-      summary: TODO
-      description: TODO
+      summary: Deletes poll
+      description: Deleting a poll will also delete all linked polls aswell
       requestBody:
         required: true
         content:
@@ -237,8 +237,8 @@ paths:
     post:
       operationId: vote_poll
       tags: [poll]
-      summary: TODO
-      description: TODO
+      summary: Votes on a poll
+      description: Number of votes depends on the poll type
       requestBody:
         required: true
         content:
@@ -261,8 +261,8 @@ paths:
     get:
       operationId: get_status
       tags: [poll]
-      summary: TODO
-      description: TODO
+      summary: Returns current voting status
+      description: Subset of /data endpoint
       requestBody:
         required: true
         content:
@@ -287,8 +287,8 @@ paths:
     post:
       operationId: heartbeat
       tags: [heartbeat]
-      summary: TODO
-      description: TODO
+      summary: Returns a heartbeat
+      description: Should always return 200 if the service is operational
       responses:
         '200':
           description: Heartbeat succeeded

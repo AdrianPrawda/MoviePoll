@@ -6,7 +6,6 @@ import (
 
 	"github.com/AdrianPrawda/movie-poll/api/messages"
 	"github.com/AdrianPrawda/movie-poll/api/util"
-	"github.com/huandu/go-sqlbuilder"
 	"github.com/mattn/go-sqlite3"
 )
 
@@ -26,41 +25,51 @@ func (q *queryHandler) insertPoll(
 	auto_create bool,
 	prev_poll string) error {
 
+	const (
+		STMT_INSERT_POLL   = "INSERT INTO poll (id, title, poll_type, target_votes, auto_create) VALUES (?,?,?,?,?)"
+		STMT_INSERT_NEXT   = "INSERT INTO next_poll (poll_id, next_poll) VALUES (?,?)"
+		STMT_INSERT_CHOICE = "INSERT INTO choice (poll_id, content) VALUES (?,?)"
+	)
+
+	debug := q._log.Debug
+	debug.Println("Inserting poll")
+
 	tx, err := q._db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	auto := 0
-	if auto_create {
-		auto = 1
-	}
-	insert_poll := sqlbuilder.NewInsertBuilder().InsertInto("poll").
-		Cols("id", "title", "type", "target_votes", "auto_create").
-		Values(id, title, string(poll_type), int(target_votes), auto)
-	if _, err := tx.Exec(insert_poll.Build()); err != nil {
+	// insert into poll
+	debug.Println("Inserting into poll table")
+	if _, err := tx.Exec(STMT_INSERT_POLL, id, title, poll_type, target_votes, auto_create); err != nil {
 		return err
 	}
 
+	// insert into next_poll
 	if prev_poll != "" {
-		insert_next := sqlbuilder.NewInsertBuilder().InsertInto("next_poll").
-			Cols("poll_id", "next_poll").
-			Values(prev_poll, id)
-		if _, err := tx.Exec(insert_next.Build()); err != nil {
+		debug.Println("Inserting into next poll table")
+		if _, err := tx.Exec(STMT_INSERT_NEXT, prev_poll, id); err != nil {
 			return err
 		}
 	}
 
-	insert_choices := sqlbuilder.NewInsertBuilder().InsertInto("choice").
-		Cols("poll_id", "content")
-	for _, text := range choices {
-		insert_choices.Values(id, text)
+	// insert into choice
+	debug.Println("Insert into choice table")
+	stmt_insert_choice, err := tx.Prepare(STMT_INSERT_CHOICE)
+	if err != nil {
+		return err
 	}
-	if _, err := tx.Exec(insert_choices.Build()); err != nil {
+	for _, content := range choices {
+		if _, err := stmt_insert_choice.Exec(id, content); err != nil {
+			return err
+		}
+	}
+	if err := stmt_insert_choice.Close(); err != nil {
 		return err
 	}
 
+	debug.Println("Commiting")
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -81,7 +90,10 @@ func (q *queryHandler) tryInsertVotes(
 		STMT_POLL_DATA   = "SELECT cast_votes, target_votes, auto_create, title FROM poll WHERE id=?"
 		STMT_USER_VOTES  = "SELECT COUNT(*) FROM vote WHERE poll_id=? AND user=?"
 		STMT_UPDATE_POLL = "UPDATE poll SET cast_votes = cast_votes + 1 WHERE id=?"
+		STMT_INSERT_VOTE = "INSERT INTO vote (poll_id, choice_id, user) VALUES (?,?,?)"
 	)
+
+	debug := q._log.Debug
 
 	tx, err := q._db.BeginTx(ctx, nil)
 	if err != nil {
@@ -90,50 +102,65 @@ func (q *queryHandler) tryInsertVotes(
 	defer tx.Rollback()
 
 	// check if voting has already concluded
+	debug.Println("Fetching poll data")
 	var cast_votes, target_votes uint
-	var auto_create int
+	var auto_create bool
 	var title string
 	if err := tx.QueryRow(STMT_POLL_DATA, poll).
 		Scan(&cast_votes, &target_votes, &auto_create, &title); err != nil {
 		return false, false, err
 	}
 	if cast_votes >= target_votes {
+		debug.Println("Target votes exceeded")
 		return false, false, nil
 	}
 
 	// check if user has already voted
+	debug.Println("Fetching number of user votes")
 	var user_votes int
 	if err := tx.QueryRow(STMT_USER_VOTES, poll, user).Scan(&user_votes); err != nil {
 		return false, false, err
 	}
 	if user_votes != 0 {
+		debug.Println("User already voted")
 		return false, false, nil
 	}
 
 	// insert votes
-	insert_votes := sqlbuilder.NewInsertBuilder().InsertInto("vote").
-		Cols("poll_id", "choice_id", "user")
-	for _, choice := range votes {
-		insert_votes.Values(poll, choice, user)
+	debug.Println("Inserting votes")
+	stmt_insert_vote, err := tx.Prepare(STMT_INSERT_VOTE)
+	if err != nil {
+		return false, false, err
 	}
-	if _, err := tx.Exec(insert_votes.Build()); err != nil {
-		if err == sqlite3.ErrBusySnapshot {
-			return true, false, nil
+	for _, choice := range votes {
+		if _, err := tx.Stmt(stmt_insert_vote).Exec(poll, choice, user); err != nil {
+			if err == sqlite3.ErrBusySnapshot {
+				debug.Println("Snapshot busy")
+				return true, false, nil
+			}
+			return false, false, err
 		}
+	}
+	err = stmt_insert_vote.Close()
+	if err != nil {
 		return false, false, err
 	}
 
 	// increase votes in poll table
+	debug.Println("Increasing poll votes")
 	if _, err := tx.Exec(STMT_UPDATE_POLL, poll); err != nil {
 		if err == sqlite3.ErrBusySnapshot {
+			debug.Println("Snapshot busy")
 			return true, false, nil
 		}
 		return false, false, err
 	}
 
 	// check if changes can be commited
+	debug.Println("Commiting changes")
 	if err := tx.Commit(); err != nil {
 		if err == sqlite3.ErrBusySnapshot {
+			debug.Println("Snapshot busy")
 			return true, false, nil
 		}
 		return false, false, err
@@ -225,7 +252,7 @@ func (q *queryHandler) getPollData(
 
 	const STMT = "SELECT title, poll_type, cast_votes, target_votes, auto_create FROM poll WHERE id=?"
 	var poll_type string
-	var auto_create int
+	var auto_create bool
 	data := new(pollData)
 	if err := q._db.QueryRowContext(ctx, STMT, id).
 		Scan(&data.title, &poll_type, &data.cast_votes, &data.target_votes, &auto_create); err != nil {
@@ -233,11 +260,6 @@ func (q *queryHandler) getPollData(
 	}
 
 	data.poll_type = messages.PollType(poll_type)
-	data.auto_create = false
-	if auto_create != 0 {
-		data.auto_create = true
-	}
-
 	return *data, nil
 }
 

@@ -9,6 +9,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
 	"regexp"
 	"time"
 
@@ -29,7 +31,7 @@ type ServerConfig struct {
 func main() {
 	// prepare config
 	cfg := new(ServerConfig)
-	flag.IntVar(&cfg.port, "port", 35000, "api port")
+	flag.IntVar(&cfg.port, "port", 35555, "api port")
 	flag.StringVar(&cfg.poll_db, "polldb", "file::memory:?cache=shared", "sqlite connection string for the poll database")
 	flag.BoolVar(&cfg.debug, "debug", false, "debug flag")
 	flag.Parse()
@@ -74,10 +76,10 @@ func setup(cfg *ServerConfig, log *util.Logger) (*sql.DB, error) {
 	}
 
 	if r.MatchString(cfg.poll_db) {
+		log.Info.Println("In-Memory database detected, adjusting connection settings")
 		db.SetMaxIdleConns(2)
 		db.SetConnMaxLifetime(0)
 	}
-	defer db.Close()
 
 	// check DB connection
 	attempts := 0
@@ -108,7 +110,14 @@ func setup(cfg *ServerConfig, log *util.Logger) (*sql.DB, error) {
 
 	// prepare DB
 	log.Debug.Println("Loading init sql file")
-	dq, err := dotsql.LoadFromFile("init.sql")
+	// init file should be next to executable
+	ex, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	fpath := path.Join(filepath.Dir(ex), "init.sql")
+
+	ds, err := dotsql.LoadFromFile(fpath)
 	if err != nil {
 		log.Error.Println("Couldn't load init sql file")
 		return nil, err
@@ -124,9 +133,9 @@ func setup(cfg *ServerConfig, log *util.Logger) (*sql.DB, error) {
 	}
 	defer tx.Rollback()
 
-	// create polls databse
-	log.Info.Println("Preparing poll database")
-	query, err := dq.Raw("create-poll-table")
+	// create poll databse
+	log.Info.Println("Preparing poll table")
+	query, err := ds.Raw("create-poll-table")
 	if err != nil {
 		return nil, err
 	}
@@ -134,9 +143,9 @@ func setup(cfg *ServerConfig, log *util.Logger) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// create choices database
-	log.Info.Println("Preparing choice database")
-	query, err = dq.Raw("create-choice-table")
+	// create choice database
+	log.Info.Println("Preparing choice table")
+	query, err = ds.Raw("create-choice-table")
 	if err != nil {
 		return nil, err
 	}
@@ -144,9 +153,9 @@ func setup(cfg *ServerConfig, log *util.Logger) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// create votes database
-	log.Info.Println("Preparing votes database")
-	query, err = dq.Raw("create-votes-table")
+	// create vote database
+	log.Info.Println("Preparing vote table")
+	query, err = ds.Raw("create-vote-table")
 	if err != nil {
 		return nil, err
 	}
@@ -155,8 +164,8 @@ func setup(cfg *ServerConfig, log *util.Logger) (*sql.DB, error) {
 	}
 
 	// create next poll database
-	log.Info.Println("Preparing next poll database")
-	query, err = dq.Raw("create-next-poll-table")
+	log.Info.Println("Preparing next poll table")
+	query, err = ds.Raw("create-next-poll-table")
 	if err != nil {
 		return nil, err
 	}
@@ -184,5 +193,6 @@ func serve(cfg *ServerConfig, log *util.Logger, poll_db *sql.DB) error {
 	e.POST("/api/heartbeat", h.Heartbeat)
 
 	log.Info.Printf("Start serving API on port %d\n", cfg.port)
+	defer poll_db.Close()
 	return e.Start(fmt.Sprintf(":%d", cfg.port))
 }

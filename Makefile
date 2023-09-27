@@ -1,11 +1,12 @@
 .PHONY: clean db run-api run-render
 
 api:
-	mkdir -p build/
+	mkdir -p build/server/
+	cp src/server/api/init.sql build/server/init.sql
 	go build -C src/server/api -o ../../../build/server/api
 
 render:
-	mkdir -p build/
+	mkdir -p build/server/
 	go build -C src/server/render -o ../../../build/server/render
 
 build: api render
@@ -18,8 +19,8 @@ clean:
 	rm -rf build/
 	rm -f db/poll.db
 
-run-api: build-api db
-	./build/api
+run-api: api db
+	./build/server/api -debug
 
-run-render: build-render db
-	./build/render
+run-render: render db
+	./build/server/render -debug

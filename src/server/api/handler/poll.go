@@ -6,7 +6,6 @@ import (
 
 	"github.com/AdrianPrawda/movie-poll/api/messages"
 	"github.com/AdrianPrawda/movie-poll/api/util"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/mattn/go-sqlite3"
 )
@@ -22,16 +21,17 @@ func (h *Handler) CreatePoll(c echo.Context) error {
 	}
 
 	// validate user input
+	log.Debug.Println("Validating input")
 	if len(req.Choices) < 2 {
 		log.Warn.Println("To few choices in request to create poll")
 		return c.String(http.StatusBadRequest, "at least two choices must be provided")
 	}
 	if req.Title == "" {
-		log.Warn.Println("title must be at least 1 character long")
+		log.Warn.Println("Title must be at least 1 character long")
 		return c.String(http.StatusBadRequest, "title must be at least 1 character long")
 	}
 	if req.TargetVotes < 1 {
-		log.Warn.Println("poll must allow for at least 1 vote")
+		log.Warn.Println("Poll must allow for at least 1 vote")
 		return c.String(http.StatusBadRequest, "poll must allow for at least 1 vote")
 	}
 
@@ -39,10 +39,11 @@ func (h *Handler) CreatePoll(c echo.Context) error {
 	defer cancel()
 
 	// create new poll
-	poll_uuid := uuid.New()
+	poll_id := util.GenerateID()
+	log.Debug.Println("Inserting poll data")
 	err := h.queries.insertPoll(
 		ctx,
-		poll_uuid.String(),
+		poll_id,
 		req.Title,
 		req.Type,
 		req.TargetVotes,
@@ -52,13 +53,14 @@ func (h *Handler) CreatePoll(c echo.Context) error {
 
 	if err != nil {
 		if h.isSQLiteErrNo(err, sqlite3.ErrConstraint) {
-			log.Warn.Printf("invalid previous poll id %s\n", req.PrevPollID)
+			log.Warn.Printf("Invalid previous poll id %s\n", req.PrevPollID)
 			return c.String(http.StatusNotFound, "previous poll not found")
 		}
 		return h.handleError(c, err, true)
 	}
 
-	resp := messages.CreatePollResp{PollID: poll_uuid.String()}
+	log.Debug.Println("Done inserting poll data")
+	resp := messages.CreatePollResp{PollID: poll_id}
 	return c.JSON(http.StatusOK, resp)
 }
 
@@ -117,7 +119,7 @@ func (h *Handler) VotePoll(c echo.Context) error {
 			}
 			return h.handleError(c, err, false)
 		}
-		if !retry {
+		if !retry && !ok {
 			h.log.Warn.Printf("invalid voting request from user %s\n", req.UserID)
 			return c.String(http.StatusBadRequest, "voting constraints not met")
 		}
@@ -157,10 +159,10 @@ func (h *Handler) VotePoll(c echo.Context) error {
 				new_choices = append(new_choices, choice)
 			}
 
-			uuid := uuid.New()
+			uuid := util.GenerateID()
 			err = h.queries.insertPoll(
 				pctx,
-				uuid.String(),
+				uuid,
 				data.title,
 				messages.SINGLE,
 				data.target_votes,
@@ -307,12 +309,12 @@ func (h *Handler) GetPollStatus(c echo.Context) error {
 }
 
 func (h *Handler) Heartbeat(c echo.Context) error {
-	h.log.Debug.Println("heartbeat")
+	h.log.Debug.Println("Heartbeat")
 	ctx, cancel := defaultTimeout()
 	defer cancel()
 	if err := h.db.PingContext(ctx); err != nil {
 		if err == sql.ErrConnDone || err == sql.ErrTxDone {
-			h.log.Warn.Println("db heartbeat failed")
+			h.log.Warn.Println("DB heartbeat failed")
 			return c.NoContent(http.StatusRequestTimeout)
 		}
 		h.log.Error.Print(err)

@@ -4,7 +4,10 @@ import (
 	"context"
 	"log"
 	"math"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Logger struct {
@@ -55,4 +58,14 @@ func HasDuplicates[T comparable](values []T) bool {
 		visited[val] = true
 	}
 	return false
+}
+
+func RepeatString(text string, seperator string, times int) string {
+	elems := make([]string, 0, times)
+	return strings.Join(elems, seperator)
+}
+
+func GenerateID() string {
+	uuid := uuid.New()
+	return strings.Replace(uuid.String(), "-", "", -1)
 }
